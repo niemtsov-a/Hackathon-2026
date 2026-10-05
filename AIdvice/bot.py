@@ -4,18 +4,18 @@ from dotenv import load_dotenv
 from aiogram import Bot, Dispatcher
 from aiogram.types import Message
 from aiogram.filters import CommandStart
-from openai import OpenAI
+from google import genai
 #Імпорт налаштувань з .env.txt
 load_dotenv()
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 #Підключаємо Телеграм
 bot = Bot(token=TELEGRAM_BOT_TOKEN)
 dp = Dispatcher()
 
-#Підключаємо GPT
-client = OpenAI(api_key=OPENAI_API_KEY)
+#Підключаємо Gemini
+client = genai.Client(api_key=GEMINI_API_KEY)
 
 #Інструкція (промпт)
 AIdvice_PROMPT = """
@@ -143,41 +143,29 @@ async def start(message: Message):
         "Довір мені допомогу у навчанні! Пришли задачу та спробуємо разом її розв'язати."
     )
 #Пам'ять
-user_history = {}
+user_chats = {}
 @dp.message()
 async def handle_message(message: Message):
     
     user_id = message.from_user.id
 
     # Якщо користувач ще не має історії
-    if user_id not in user_history:
-        user_history[user_id] = []
-
-    # Додаємо повідомлення користувача до історії
-    user_history[user_id].append({
-        "role": "user",
-        "content": message.text
-    })
-
-    # Беремо тільки останні 10 повідомлень
-    history = user_history[user_id][-10:]
-
-    response = client.responses.create(
-        model="gpt-6-luna",
-        instructions=AIdvice_PROMPT,
-        input=history
+    if user_id not in user_chats:
+        user_chats[user_id] = client.chats.create(
+            model="gemini-3.8-flash",
+            config={
+                "system_instruction": AIdvice_PROMPT,
+                "temperature": 0.7, # Трохи творчості для м'якшого тону репетитора
+            }
     )
 
-    # Отримуємо відповідь
-    answer = response.output_text
+    # Беремо тільки останні 10 повідомлень
+    chat = user_chats[user_id]
 
-    # Додаємо відповідь бота до історії
-    user_history[user_id].append({
-        "role": "assistant",
-        "content": answer
-    })
+    response = await chat.send_message(message.text)
 
-    await message.answer(answer)
+    # Відправляємо відповідь учню
+    await message.answer(response.text)
 
 
 async def main():
